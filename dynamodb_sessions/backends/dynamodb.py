@@ -15,6 +15,8 @@ HASH_ATTRIB_NAME = getattr(
     settings, 'DYNAMODB_SESSIONS_TABLE_HASH_ATTRIB_NAME', 'session_key')
 ALWAYS_CONSISTENT = getattr(
     settings, 'DYNAMODB_SESSIONS_ALWAYS_CONSISTENT', True)
+LOCAL_DYNAMODB_SERVER = getattr(
+    settings, 'LOCAL_DYNAMODB_SERVER', None)
 
 _BOTO_SESSION = getattr(
     settings, 'DYNAMODB_SESSIONS_BOTO_SESSION', False)
@@ -61,7 +63,8 @@ def dynamodb_connection_factory():
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
                 region_name=AWS_REGION_NAME)
-        _DYNAMODB_CONN = _BOTO_SESSION.resource('dynamodb')
+        _DYNAMODB_CONN = _BOTO_SESSION.resource('dynamodb',
+                                                endpoint_url=LOCAL_DYNAMODB_SERVER)
     return _DYNAMODB_CONN
 
 
