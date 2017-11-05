@@ -7,6 +7,7 @@ from django.contrib.sessions.backends.base import SessionBase, CreateError
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Attr as DynamoConditionAttr
 from boto3.session import Session as Boto3Session
+from botocore.config import Config
 
 
 TABLE_NAME = getattr(
@@ -17,6 +18,13 @@ ALWAYS_CONSISTENT = getattr(
     settings, 'DYNAMODB_SESSIONS_ALWAYS_CONSISTENT', True)
 LOCAL_DYNAMODB_SERVER = getattr(
     settings, 'LOCAL_DYNAMODB_SERVER', None)
+BotoCoreConfig = getattr(
+    settings, 'BotoCoreConfig', None)
+
+# defensive programming if config has been defined
+# make sure it's the correct format.
+if BotoCoreConfig:
+    assert isinstance(BotoCoreConfig, Config)
 
 _BOTO_SESSION = getattr(
     settings, 'DYNAMODB_SESSIONS_BOTO_SESSION', False)
@@ -64,7 +72,9 @@ def dynamodb_connection_factory():
                 aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
                 region_name=AWS_REGION_NAME)
         _DYNAMODB_CONN = _BOTO_SESSION.resource('dynamodb',
-                                                endpoint_url=LOCAL_DYNAMODB_SERVER)
+                                                endpoint_url=LOCAL_DYNAMODB_SERVER,
+                                                config=BotoCoreConfig
+                                                )
     return _DYNAMODB_CONN
 
 
