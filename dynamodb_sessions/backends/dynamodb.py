@@ -18,13 +18,13 @@ ALWAYS_CONSISTENT = getattr(
     settings, 'DYNAMODB_SESSIONS_ALWAYS_CONSISTENT', True)
 LOCAL_DYNAMODB_SERVER = getattr(
     settings, 'LOCAL_DYNAMODB_SERVER', None)
-BotoCoreConfig = getattr(
-    settings, 'BotoCoreConfig', None)
+BOTO_CORE_CONFIG = getattr(
+    settings, 'BOTO_CORE_CONFIG', None)
 
 # defensive programming if config has been defined
 # make sure it's the correct format.
-if BotoCoreConfig:
-    assert isinstance(BotoCoreConfig, Config)
+if BOTO_CORE_CONFIG:
+    assert isinstance(BOTO_CORE_CONFIG, Config)
 
 _BOTO_SESSION = getattr(
     settings, 'DYNAMODB_SESSIONS_BOTO_SESSION', False)
@@ -73,7 +73,7 @@ def dynamodb_connection_factory():
                 region_name=AWS_REGION_NAME)
         _DYNAMODB_CONN = _BOTO_SESSION.resource('dynamodb',
                                                 endpoint_url=LOCAL_DYNAMODB_SERVER,
-                                                config=BotoCoreConfig
+                                                config=BOTO_CORE_CONFIG
                                                 )
     return _DYNAMODB_CONN
 
