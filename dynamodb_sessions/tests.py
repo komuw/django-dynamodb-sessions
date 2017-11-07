@@ -70,3 +70,23 @@ class TestManagementCommands(TestCase):
         out = StringIO()
         call_command('create_session_table', stdout=out)
         self.assertEqual("session table already exist\n", out.getvalue())
+
+
+class TestDeleteTableCommand(TestCase):
+
+    def setUp(self):
+        call_command('create_session_table')
+
+    def test(self):
+        # confirm table is
+        connection = dynamodb_connection_factory(lowlevel=True)
+        connection.describe_table(TableName=TABLE_NAME)
+
+        call_command('delete_session_table')
+
+        # check it has been deleted
+        self.assertRaises(ClientError, connection.describe_table,
+                          TableName=TABLE_NAME)
+
+        # check calling even if table does not exist still works
+        call_command('delete_session_table')
