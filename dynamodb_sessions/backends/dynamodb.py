@@ -113,6 +113,8 @@ class SessionStore(SessionBase):
         :rtype: dict
         :returns: The de-coded session data, as a dict.
         """
+        if self.session_key is None:
+            return {}
 
         response = self.table.get_item(
             Key={'session_key': self.session_key},
@@ -168,10 +170,6 @@ class SessionStore(SessionBase):
         :raises: ``CreateError`` if ``must_create`` is ``True`` and a session
             with the current session key already exists.
         """
-
-        if self.session_key is None:
-            return self.create()
-
         self._get_or_create_session_key()
 
         update_kwargs = {

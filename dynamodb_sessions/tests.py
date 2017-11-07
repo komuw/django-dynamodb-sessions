@@ -33,6 +33,16 @@ class DynamoDbTestCase(TestCase):
             'test'
         )
 
+    def test_creating_session_with_empty_session_key(self):
+        session = SessionStore()
+        session['name'] = 'test'
+        session.save()
+
+        self.assertEqual(
+            SessionStore(session_key=session.session_key)['name'],
+            'test'
+        )
+
 
 class TestManagementCommands(TestCase):
 
