@@ -1,0 +1,14 @@
+version: '3'
+services:
+  app:
+    build: .
+    depends_on:
+      - dynamoDb
+    volumes:
+      - ./:/usr/src/app
+    command: bash -c "./wait-for-it.sh dynamoDb:8000 && python manage.py test"
+
+  dynamoDb:
+    image: cnadiminti/dynamodb-local:2017-02-16
+    ports:
+      - 8783:8000

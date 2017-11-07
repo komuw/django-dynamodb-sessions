@@ -21,6 +21,12 @@ LOCAL_DYNAMODB_SERVER = getattr(
 BOTO_CORE_CONFIG = getattr(
     settings, 'BOTO_CORE_CONFIG', None)
 
+READ_CAPACITY_UNITS = getattr(
+    settings, 'DYNAMODB_READ_CAPACITY_UNITS', 123
+)
+WRITE_CAPACITY_UNITS = getattr(
+    settings, 'DYNAMODB_WRITE_CAPACITY_UNITS', 123
+)
 # defensive programming if config has been defined
 # make sure it's the correct format.
 if BOTO_CORE_CONFIG:
@@ -53,7 +59,7 @@ _DYNAMODB_CONN = None
 logger = logging.getLogger(__name__)
 
 
-def dynamodb_connection_factory():
+def dynamodb_connection_factory(lowlevel=False):
     """
     Since SessionStore is called for every single page view, we'd be
     establishing new connections so frequently that performance would be
@@ -64,6 +70,13 @@ def dynamodb_connection_factory():
 
     global _DYNAMODB_CONN
     global _BOTO_SESSION
+
+    kwargs = dict(
+        service_name='dynamodb',
+        endpoint_url=LOCAL_DYNAMODB_SERVER,
+        config=BOTO_CORE_CONFIG
+    )
+
     if not _DYNAMODB_CONN:
         logger.debug("Creating a DynamoDB connection.")
         if not _BOTO_SESSION:
@@ -71,10 +84,9 @@ def dynamodb_connection_factory():
                 aws_access_key_id=AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
                 region_name=AWS_REGION_NAME)
-        _DYNAMODB_CONN = _BOTO_SESSION.resource('dynamodb',
-                                                endpoint_url=LOCAL_DYNAMODB_SERVER,
-                                                config=BOTO_CORE_CONFIG
-                                                )
+        _DYNAMODB_CONN = _BOTO_SESSION.resource(**kwargs)
+    if lowlevel:
+        return _BOTO_SESSION.client(**kwargs)
     return _DYNAMODB_CONN
 
 
@@ -109,7 +121,7 @@ class SessionStore(SessionBase):
             session_data = response['Item']['data']
             return self.decode(session_data)
         else:
-            self.create()
+            self._session_key = None
             return {}
 
     def exists(self, session_key):
@@ -157,12 +169,8 @@ class SessionStore(SessionBase):
             with the current session key already exists.
         """
 
-        # If the save method is called with must_create equal to True, I'm
-        # setting self._session_key equal to None and when
-        # self.get_or_create_session_key is called the new
-        # session_key will be created.
-        if must_create:
-            self._session_key = None
+        if self.session_key is None:
+            return self.create()
 
         self._get_or_create_session_key()
 

@@ -12,3 +12,4 @@ boto
 testapp/
 manage.py
 *.egg-info
+.data
