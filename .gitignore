@@ -10,5 +10,5 @@ build
 dist
 boto
 testapp/
-manage.py
 *.egg-info
+.venv
