@@ -5,9 +5,13 @@ from django.conf import settings
 from django.contrib.sessions.backends.base import SessionBase, CreateError
 
 from botocore.exceptions import ClientError
+import boto3
 from boto3.dynamodb.conditions import Attr as DynamoConditionAttr
-from boto3.session import Session as Boto3Session
 from botocore.config import Config
+import os
+from django.utils import timezone
+from datetime import timedelta
+from django.contrib.sessions.backends import db
 
 
 TABLE_NAME = getattr(
@@ -16,44 +20,43 @@ HASH_ATTRIB_NAME = getattr(
     settings, 'DYNAMODB_SESSIONS_TABLE_HASH_ATTRIB_NAME', 'session_key')
 ALWAYS_CONSISTENT = getattr(
     settings, 'DYNAMODB_SESSIONS_ALWAYS_CONSISTENT', True)
-LOCAL_DYNAMODB_SERVER = getattr(
-    settings, 'LOCAL_DYNAMODB_SERVER', None)
-BotoCoreConfig = getattr(
-    settings, 'BotoCoreConfig', None)
+
+USE_LOCAL_DYNAMODB_SERVER = getattr(
+    settings, 'USE_LOCAL_DYNAMODB_SERVER', False)
+BOTO_CORE_CONFIG = getattr(
+    settings, 'BOTO_CORE_CONFIG', None)
+
+READ_CAPACITY_UNITS = getattr(
+    settings, 'DYNAMODB_READ_CAPACITY_UNITS', 123
+)
+WRITE_CAPACITY_UNITS = getattr(
+    settings, 'DYNAMODB_WRITE_CAPACITY_UNITS', 123
+)
 
 # defensive programming if config has been defined
 # make sure it's the correct format.
-if BotoCoreConfig:
-    assert isinstance(BotoCoreConfig, Config)
+if BOTO_CORE_CONFIG:
+    assert isinstance(BOTO_CORE_CONFIG, Config)
 
-_BOTO_SESSION = getattr(
-    settings, 'DYNAMODB_SESSIONS_BOTO_SESSION', False)
-
-# Allow a boto session to be provided, i.e. for auto refreshing credentials
-if not _BOTO_SESSION:
-    AWS_ACCESS_KEY_ID = getattr(
-        settings, 'DYNAMODB_SESSIONS_AWS_ACCESS_KEY_ID', False)
-    if not AWS_ACCESS_KEY_ID:
-        AWS_ACCESS_KEY_ID = getattr(
-            settings, 'AWS_ACCESS_KEY_ID')
-
-    AWS_SECRET_ACCESS_KEY = getattr(
-        settings, 'DYNAMODB_SESSIONS_AWS_SECRET_ACCESS_KEY', False)
-    if not AWS_SECRET_ACCESS_KEY:
-        AWS_SECRET_ACCESS_KEY = getattr(settings, 'AWS_SECRET_ACCESS_KEY')
-
-    AWS_REGION_NAME = getattr(settings, 'DYNAMODB_SESSIONS_AWS_REGION_NAME',
-                              False)
-    if not AWS_REGION_NAME:
-        AWS_REGION_NAME = getattr(settings, 'AWS_REGION_NAME', 'us-east-1')
 
 # We'll find some better way to do this.
 _DYNAMODB_CONN = None
 
 logger = logging.getLogger(__name__)
+dynamo_kwargs = dict(
+    service_name='dynamodb',
+    config=BOTO_CORE_CONFIG
+)
+
+if USE_LOCAL_DYNAMODB_SERVER:
+    local_dynamodb_server = 'LOCAL_DYNAMODB_SERVER'
+    assert os.environ.get(local_dynamodb_server), \
+        "If USE_LOCAL_DYNAMODB_SERVER is set to true define " \
+        "LOCAL_DYNAMODB_SERVER in the environment"
+    dynamo_kwargs['endpoint_url'] = os.environ[local_dynamodb_server]
 
 
-def dynamodb_connection_factory():
+def dynamodb_connection_factory(low_level=False):
     """
     Since SessionStore is called for every single page view, we'd be
     establishing new connections so frequently that performance would be
@@ -62,19 +65,14 @@ def dynamodb_connection_factory():
     tokens), we're not too concerned about thread safety issues.
     """
 
+    if low_level:
+        return boto3.client(**dynamo_kwargs)
+
     global _DYNAMODB_CONN
-    global _BOTO_SESSION
+
     if not _DYNAMODB_CONN:
         logger.debug("Creating a DynamoDB connection.")
-        if not _BOTO_SESSION:
-            _BOTO_SESSION = Boto3Session(
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-                region_name=AWS_REGION_NAME)
-        _DYNAMODB_CONN = _BOTO_SESSION.resource('dynamodb',
-                                                endpoint_url=LOCAL_DYNAMODB_SERVER,
-                                                config=BotoCoreConfig
-                                                )
+        _DYNAMODB_CONN = boto3.resource(**dynamo_kwargs)
     return _DYNAMODB_CONN
 
 
@@ -102,15 +100,20 @@ class SessionStore(SessionBase):
         :returns: The de-coded session data, as a dict.
         """
 
-        response = self.table.get_item(
-            Key={'session_key': self.session_key},
-            ConsistentRead=ALWAYS_CONSISTENT)
-        if 'Item' in response:
-            session_data = response['Item']['data']
-            return self.decode(session_data)
-        else:
-            self.create()
-            return {}
+        if self.session_key is not None:
+            response = self.table.get_item(
+                Key={'session_key': self.session_key},
+                ConsistentRead=ALWAYS_CONSISTENT)
+            if 'Item' in response:
+                session_data = self.decode(response['Item']['data'])
+                time_now = timezone.now()
+                time_ten_sec_ahead = time_now + timedelta(seconds=60)
+                if time_now < session_data.get('_session_expiry',
+                                               time_ten_sec_ahead):
+                    return session_data
+
+        self._session_key = None
+        return {}
 
     def exists(self, session_key):
         """
@@ -120,6 +123,8 @@ class SessionStore(SessionBase):
         :returns: ``True`` if a session with the given key exists in the DB,
             ``False`` if not.
         """
+        if session_key is None:
+            return False
 
         response = self.table.get_item(
             Key={'session_key': session_key},
@@ -136,6 +141,7 @@ class SessionStore(SessionBase):
         """
 
         while True:
+            self._session_key = self._get_new_session_key()
             try:
                 # Save immediately to ensure we have a unique entry in the
                 # database.
@@ -143,7 +149,6 @@ class SessionStore(SessionBase):
             except CreateError:
                 continue
             self.modified = True
-            self._session_cache = {}
             return
 
     def save(self, must_create=False):
@@ -157,14 +162,8 @@ class SessionStore(SessionBase):
             with the current session key already exists.
         """
 
-        # If the save method is called with must_create equal to True, I'm
-        # setting self._session_key equal to None and when
-        # self.get_or_create_session_key is called the new
-        # session_key will be created.
-        if must_create:
-            self._session_key = None
-
-        self._get_or_create_session_key()
+        if self.session_key is None:
+            return self.create()
 
         update_kwargs = {
             'Key': {'session_key': self.session_key},
@@ -205,3 +204,8 @@ class SessionStore(SessionBase):
             session_key = self.session_key
 
         self.table.delete_item(Key={'session_key': session_key})
+
+    @classmethod
+    def clear_expired(cls):
+        # Todo figure out a way of filtering with timezone
+        pass

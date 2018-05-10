@@ -1,0 +1,23 @@
+version: 2
+jobs:
+  build:
+    machine:
+      image: circleci/classic:201708-01
+
+    working_directory: ~/django-dynamodb-sessions
+
+    steps:
+      - checkout
+
+
+
+      - run:
+          name: docker setup
+          command: |
+            docker info
+            docker-compose run --entrypoint='echo "done setting up docker"' app
+
+      - run:
+          name: Running tests
+          command: |
+            docker-compose run app ./run_test.sh

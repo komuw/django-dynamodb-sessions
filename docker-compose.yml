@@ -1,0 +1,19 @@
+version: '2.0'
+services:
+  app:
+    build: .
+    depends_on:
+      - dynamoDb
+    environment:
+      - AWS_DEFAULT_REGION=eu-west-1
+      - LOCAL_DYNAMODB_SERVER=http://dynamoDb:8000
+      - AWS_ACCESS_KEY_ID=anything
+      - AWS_SECRET_ACCESS_KEY=anything
+    volumes:
+      - ./:/usr/src/app
+    command: bash -c "python manage.py test"
+
+  dynamoDb:
+    image: cnadiminti/dynamodb-local:2017-02-16
+    ports:
+      - 8789:8000

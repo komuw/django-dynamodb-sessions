@@ -20,23 +20,24 @@ class SessionStore(DynamoDBStore):
 
     @property
     def cache_key(self):
-        return KEY_PREFIX + self.session_key
+        return KEY_PREFIX + self._get_or_create_session_key()
 
     def load(self):
         data = cache.get(self.cache_key, None)
         if data is None:
             data = super(SessionStore, self).load()
-            cache.set(self.cache_key, data, settings.SESSION_COOKIE_AGE)
+            if self.session_key is not None:
+                cache.set(self.cache_key, data, self.get_expiry_date())
         return data
 
     def exists(self, session_key):
-        if (KEY_PREFIX + session_key) in cache:
+        if session_key and (KEY_PREFIX + session_key) in cache:
             return True
         return super(SessionStore, self).exists(session_key)
 
     def save(self, must_create=False):
         super(SessionStore, self).save(must_create)
-        cache.set(self.cache_key, self._session, settings.SESSION_COOKIE_AGE)
+        cache.set(self.cache_key, self._session, self.get_expiry_age())
 
     def delete(self, session_key=None):
         super(SessionStore, self).delete(session_key)
@@ -54,4 +55,4 @@ class SessionStore(DynamoDBStore):
 
         self.clear()
         self.delete(self.session_key)
-        self.create()
+        self._session_key = None
