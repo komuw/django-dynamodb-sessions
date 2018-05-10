@@ -3,8 +3,8 @@ import dynamodb_sessions
 
 long_description = open('README.rst').read()
 
-major_ver, minor_ver = dynamodb_sessions.__version__
-version_str = '%d.%d' % (major_ver, minor_ver)
+major_ver, minor_ver, minor_minor_ver = dynamodb_sessions.__version__
+version_str = '%d.%d.%d' % (major_ver, minor_ver, minor_minor_ver)
 
 setup(
     name='django-dynamodb-sessions',
