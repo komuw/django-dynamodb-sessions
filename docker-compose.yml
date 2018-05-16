@@ -11,7 +11,9 @@ services:
       - AWS_SECRET_ACCESS_KEY=anything
     volumes:
       - ./:/usr/src/app
+      - ~/.pypirc:/root/.pypirc
     command: bash -c "python manage.py test"
+
 
   dynamoDb:
     image: cnadiminti/dynamodb-local:2017-02-16
