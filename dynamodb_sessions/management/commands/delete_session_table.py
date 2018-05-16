@@ -8,6 +8,15 @@ from botocore.exceptions import ClientError
 class Command(BaseCommand):
     help = 'delete session table if does not exist'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--ignore_logs', '--ignore_logs',
+            default=False,
+            help='Boolean ',
+            action='store_true',
+            dest='ignore_logs'
+        )
+
     def handle(self, *args, **options):
         connection = dynamodb_connection_factory(low_level=True)
         try:
@@ -18,7 +27,10 @@ class Command(BaseCommand):
             if e.response['Error']['Code'] != \
                     'ResourceNotFoundException':
                 raise e
-        self.stdout.write("{0} dynamble table  deleted".format(TABLE_NAME))
+
+        if not options.get('ignore_logs'):
+            self.stdout.write(
+                "{0} dynamble table  deleted".format(TABLE_NAME))
 
 
 

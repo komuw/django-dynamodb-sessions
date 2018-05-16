@@ -12,6 +12,15 @@ from botocore.exceptions import ClientError
 class Command(BaseCommand):
     help = 'creates session table if does not exist'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--ignore_logs', '--ignore_logs',
+            default=False,
+            help='Boolean ',
+            action='store_true',
+            dest='ignore_logs'
+        )
+
     def handle(self, *args, **options):
         connection = dynamodb_connection_factory(low_level=True)
 
@@ -20,7 +29,8 @@ class Command(BaseCommand):
             connection.describe_table(
                 TableName=TABLE_NAME
             )
-            self.stdout.write("session table already exist\n")
+            if not options.get('ignore_logs'):
+                self.stdout.write("session table already exist\n")
             return
         except ClientError as e:
             if e.response['Error']['Code'] == \
@@ -62,9 +72,11 @@ class Command(BaseCommand):
             time.sleep(1)
 
         if table_status:
-            self.stdout.write("session table created\n")
+            if not options.get('ignore_logs'):
+                self.stdout.write("session table created\n")
         else:
-            self.stdout.write("session table created but not active\n")
+            if not options.get('ignore_logs'):
+                self.stdout.write("session table created but not active\n")
 
 
 
