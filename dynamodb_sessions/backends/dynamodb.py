@@ -41,6 +41,7 @@ if BOTO_CORE_CONFIG:
 
 # We'll find some better way to do this.
 _DYNAMODB_CONN = None
+_DYNAMODB_TABLE = None
 
 logger = logging.getLogger(__name__)
 dynamo_kwargs = dict(
@@ -76,6 +77,14 @@ def dynamodb_connection_factory(low_level=False):
     return _DYNAMODB_CONN
 
 
+def dynamodb_table():
+    global _DYNAMODB_TABLE
+
+    if not _DYNAMODB_TABLE:
+        _DYNAMODB_TABLE = dynamodb_connection_factory().Table(TABLE_NAME)
+    return _DYNAMODB_TABLE
+
+
 class SessionStore(SessionBase):
     """
     Implements DynamoDB session store.
@@ -83,13 +92,10 @@ class SessionStore(SessionBase):
 
     def __init__(self, session_key=None):
         super(SessionStore, self).__init__(session_key)
-        self._table = None
 
     @property
     def table(self):
-        if self._table is None:
-            self._table = dynamodb_connection_factory().Table(TABLE_NAME)
-        return self._table
+        return dynamodb_table()
 
     def load(self):
         """

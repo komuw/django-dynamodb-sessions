@@ -380,7 +380,6 @@ class DynamoDBTestCase(SessionTestsMixin, TestCase):
             self._table = dynamodb_connection_factory().Table(TABLE_NAME)
         return self._table
 
-    @skip("until clear_expired method if implemented")
     @override_settings(
         SESSION_ENGINE="dynamodb_sessions.backends.dynamodb",
         SESSION_COOKIE_AGE=0,
@@ -408,6 +407,14 @@ class DynamoDBTestCase(SessionTestsMixin, TestCase):
             management.call_command('clearsessions')
         # ... and one is deleted.
         self.assertEqual(1, self.table(force_connection=True).item_count)
+
+    def test_pickle_dump(self):
+        import pickle as pypickle
+        import cPickle as cpickle
+
+        pypickle.dumps(self.session, 2)
+
+        cpickle.dumps(self.session, 2)
 
 
 class CachedDynamoDBTestCase(SessionTestsMixin, TestCase):
