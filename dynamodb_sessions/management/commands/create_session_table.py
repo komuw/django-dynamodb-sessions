@@ -72,6 +72,15 @@ class Command(BaseCommand):
             time.sleep(1)
 
         if table_status:
+            # uncommet the below code if local dynamo db starts
+            # supporting ttl.
+            # response = connection.update_time_to_live(
+            #     TableName=TABLE_NAME,
+            #     TimeToLiveSpecification={
+            #         'Enabled': True,
+            #         'AttributeName': 'ttl'
+            #     }
+            # )
             if not options.get('ignore_logs'):
                 self.stdout.write("session table created\n")
         else:

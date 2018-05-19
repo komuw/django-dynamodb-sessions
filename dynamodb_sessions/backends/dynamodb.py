@@ -184,6 +184,10 @@ class SessionStore(SessionBase):
                 DynamoConditionAttr('session_key').not_exists()
             attribute_values[':created'] = int(time.time())
             set_updates.append('created = :created')
+
+        # locally dynamodb does not support ttl.
+        if not USE_LOCAL_DYNAMODB_SERVER:
+            update_kwargs['ttl'] = int(time.time() + self.get_expiry_age())
         update_kwargs['UpdateExpression'] = 'SET ' + ','.join(set_updates)
         update_kwargs['ExpressionAttributeValues'] = attribute_values
         update_kwargs['ExpressionAttributeNames'] = attribute_names
