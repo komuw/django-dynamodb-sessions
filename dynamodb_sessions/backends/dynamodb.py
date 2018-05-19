@@ -11,7 +11,6 @@ from botocore.config import Config
 import os
 from django.utils import timezone
 from datetime import timedelta
-from django.contrib.sessions.backends import db
 
 
 TABLE_NAME = getattr(
