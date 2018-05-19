@@ -380,6 +380,7 @@ class DynamoDBTestCase(SessionTestsMixin, TestCase):
             self._table = dynamodb_connection_factory().Table(TABLE_NAME)
         return self._table
 
+    @skip("until clear_expired method if implemented")
     @override_settings(
         SESSION_ENGINE="dynamodb_sessions.backends.dynamodb",
         SESSION_COOKIE_AGE=0,
