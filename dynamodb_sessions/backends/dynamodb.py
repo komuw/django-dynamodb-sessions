@@ -173,11 +173,13 @@ class SessionStore(SessionBase):
         update_kwargs = {
             'Key': {'session_key': self.session_key},
         }
-        attribute_names = {'#data': 'data'}
+
+        attribute_names = {'#data': 'data', '#ttl': 'ttl'}
         attribute_values = {
-            ':data': self.encode(self._get_session(no_load=must_create))
+            ':data': self.encode(self._get_session(no_load=must_create)),
+            ':ttl': int(time.time() + self.get_expiry_age())
         }
-        set_updates = ['#data = :data']
+        set_updates = ['#data = :data', '#ttl = :ttl']
         if must_create:
             # Set condition to ensure session with same key doesnt exist
             update_kwargs['ConditionExpression'] = \
@@ -185,9 +187,6 @@ class SessionStore(SessionBase):
             attribute_values[':created'] = int(time.time())
             set_updates.append('created = :created')
 
-        # locally dynamodb does not support ttl.
-        if not USE_LOCAL_DYNAMODB_SERVER:
-            update_kwargs['ttl'] = int(time.time() + self.get_expiry_age())
         update_kwargs['UpdateExpression'] = 'SET ' + ','.join(set_updates)
         update_kwargs['ExpressionAttributeValues'] = attribute_values
         update_kwargs['ExpressionAttributeNames'] = attribute_names
