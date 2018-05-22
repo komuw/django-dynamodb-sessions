@@ -1,3 +1,4 @@
+import newrelic.agent
 import time
 import logging
 
@@ -11,6 +12,7 @@ from botocore.config import Config
 import os
 from django.utils import timezone
 from datetime import timedelta
+import sys
 
 
 TABLE_NAME = getattr(
@@ -96,6 +98,7 @@ class SessionStore(SessionBase):
     def table(self):
         return dynamodb_table()
 
+    @newrelic.agent.datastore_trace('DynamoDb', None, 'load')
     def load(self):
         """
         Loads session data from DynamoDB, runs it through the session
@@ -106,10 +109,15 @@ class SessionStore(SessionBase):
         """
 
         if self.session_key is not None:
+            start_time = time.time()
             response = self.table.get_item(
                 Key={'session_key': self.session_key},
                 ConsistentRead=ALWAYS_CONSISTENT)
+            duration = time.time() - start_time
+            newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_response', duration)
             if 'Item' in response:
+                newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_size',
+                                                    sys.getsizeof(response['Item']))
                 session_data = self.decode(response['Item']['data'])
                 time_now = timezone.now()
                 time_ten_sec_ahead = time_now + timedelta(seconds=60)
@@ -120,6 +128,7 @@ class SessionStore(SessionBase):
         self._session_key = None
         return {}
 
+    @newrelic.agent.datastore_trace('DynamoDb', None, 'exists')
     def exists(self, session_key):
         """
         Checks to see if a session currently exists in DynamoDB.
@@ -130,11 +139,15 @@ class SessionStore(SessionBase):
         """
         if session_key is None:
             return False
-
+        start_time = time.time()
         response = self.table.get_item(
             Key={'session_key': session_key},
             ConsistentRead=ALWAYS_CONSISTENT)
+        newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_response_exists',
+                                            time.time() - start_time)
         if 'Item' in response:
+            newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_size_exists',
+                                                sys.getsizeof(response['Item']))
             return True
         else:
             return False
@@ -156,6 +169,7 @@ class SessionStore(SessionBase):
             self.modified = True
             return
 
+    @newrelic.agent.datastore_trace('DynamoDb', None, 'save')
     def save(self, must_create=False):
         """
         Saves the current session data to the database.
@@ -175,8 +189,9 @@ class SessionStore(SessionBase):
         }
 
         attribute_names = {'#data': 'data', '#ttl': 'ttl'}
+        session_data = self.encode(self._get_session(no_load=must_create))
         attribute_values = {
-            ':data': self.encode(self._get_session(no_load=must_create)),
+            ':data': session_data,
             ':ttl': int(time.time() + self.get_expiry_age())
         }
         set_updates = ['#data = :data', '#ttl = :ttl']
@@ -191,13 +206,20 @@ class SessionStore(SessionBase):
         update_kwargs['ExpressionAttributeValues'] = attribute_values
         update_kwargs['ExpressionAttributeNames'] = attribute_names
         try:
+            start_time = time.time()
             self.table.update_item(**update_kwargs)
+            newrelic.agent.record_custom_metric('Custom/DynamoDb/update_item_response',
+                                                (time.time() - start_time))
+            newrelic.agent.record_custom_metric('Custom/DynamoDb/update_item_size',
+                                                sys.getsizeof(session_data))
+
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'ConditionalCheckFailedException':
                 raise CreateError
             raise
 
+    @newrelic.agent.datastore_trace('DynamoDb', None, 'delete')
     def delete(self, session_key=None):
         """
         Deletes the current session, or the one specified in ``session_key``.
@@ -210,8 +232,10 @@ class SessionStore(SessionBase):
             if self.session_key is None:
                 return
             session_key = self.session_key
-
+        start_time = time.time()
         self.table.delete_item(Key={'session_key': session_key})
+        newrelic.agent.record_custom_metric('Custom/DynamoDb/delete_item_response',
+                                            (time.time() - start_time))
 
     @classmethod
     def clear_expired(cls):
