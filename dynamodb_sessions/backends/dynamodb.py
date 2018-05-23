@@ -1,6 +1,6 @@
 import newrelic.agent
 import time
-import logging
+from structlog import get_logger
 
 from django.conf import settings
 from django.contrib.sessions.backends.base import SessionBase, CreateError
@@ -34,6 +34,10 @@ WRITE_CAPACITY_UNITS = getattr(
     settings, 'DYNAMODB_WRITE_CAPACITY_UNITS', 123
 )
 
+DYNAMO_SESSION_DATA_SIZE_WARNING_LIMIT = getattr(settings,
+                                                 'DYNAMO_SESSION_DATA_SIZE_WARNING_LIMIT',
+                                                 500)
+
 # defensive programming if config has been defined
 # make sure it's the correct format.
 if BOTO_CORE_CONFIG:
@@ -44,7 +48,7 @@ if BOTO_CORE_CONFIG:
 _DYNAMODB_CONN = None
 _DYNAMODB_TABLE = None
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 dynamo_kwargs = dict(
     service_name='dynamodb',
     config=BOTO_CORE_CONFIG
@@ -116,8 +120,10 @@ class SessionStore(SessionBase):
             duration = time.time() - start_time
             newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_response', duration)
             if 'Item' in response:
+                session_size = sys.getsizeof(response['Item'])
                 newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_size',
-                                                    sys.getsizeof(response['Item']))
+                                                    session_size)
+                self.session_bust_warning(session_size)
                 session_data = self.decode(response['Item']['data'])
                 time_now = timezone.now()
                 time_ten_sec_ahead = time_now + timedelta(seconds=60)
@@ -146,8 +152,10 @@ class SessionStore(SessionBase):
         newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_response_exists',
                                             time.time() - start_time)
         if 'Item' in response:
+            session_size = sys.getsizeof(response['Item'])
             newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_size_exists',
-                                                sys.getsizeof(response['Item']))
+                                                session_size)
+            self.session_bust_warning(session_size)
             return True
         else:
             return False
@@ -206,12 +214,14 @@ class SessionStore(SessionBase):
         update_kwargs['ExpressionAttributeValues'] = attribute_values
         update_kwargs['ExpressionAttributeNames'] = attribute_names
         try:
+            session_size = sys.getsizeof(session_data)
             start_time = time.time()
             self.table.update_item(**update_kwargs)
             newrelic.agent.record_custom_metric('Custom/DynamoDb/update_item_response',
                                                 (time.time() - start_time))
             newrelic.agent.record_custom_metric('Custom/DynamoDb/update_item_size',
-                                                sys.getsizeof(session_data))
+                                                session_size)
+            self.session_bust_warning(session_size)
 
         except ClientError as e:
             error_code = e.response['Error']['Code']
@@ -241,3 +251,16 @@ class SessionStore(SessionBase):
     def clear_expired(cls):
         # Todo figure out a way of filtering with timezone
         pass
+
+    def session_bust_warning(self, size):
+        """
+        In dynamod db size consumes read and capacity units.
+        The larger the size the more it consumes
+        It also affects the response time. So its good
+        to keep track if it starts to grow.
+        :param size:
+        :return:
+        """
+        if size/100 >= DYNAMO_SESSION_DATA_SIZE_WARNING_LIMIT:
+            logger.debug("session_size_warning",
+                         session_id=self.session_key, size=size)
