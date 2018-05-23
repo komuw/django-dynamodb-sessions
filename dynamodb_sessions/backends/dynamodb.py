@@ -108,7 +108,8 @@ class SessionStore(SessionBase):
         """
         return base64.b64encode(
                 zlib.compress(
-                    self.serializer().dumps(session_dict)
+                    self.serializer().dumps(session_dict),
+                    9
                 )
             )
 
