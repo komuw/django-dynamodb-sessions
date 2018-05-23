@@ -12,7 +12,6 @@ from botocore.config import Config
 import os
 from django.utils import timezone
 from datetime import timedelta
-import sys
 
 
 TABLE_NAME = getattr(
@@ -120,11 +119,12 @@ class SessionStore(SessionBase):
             duration = time.time() - start_time
             newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_response', duration)
             if 'Item' in response:
-                session_size = sys.getsizeof(response['Item'])
+                session_data_response = response['Item']['data']
+                session_size = len(session_data_response)
                 newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_size',
                                                     session_size)
                 self.session_bust_warning(session_size)
-                session_data = self.decode(response['Item']['data'])
+                session_data = self.decode(session_data_response)
                 time_now = timezone.now()
                 time_ten_sec_ahead = time_now + timedelta(seconds=60)
                 if time_now < session_data.get('_session_expiry',
@@ -152,7 +152,7 @@ class SessionStore(SessionBase):
         newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_response_exists',
                                             time.time() - start_time)
         if 'Item' in response:
-            session_size = sys.getsizeof(response['Item'])
+            session_size = len(response['Item'].get('data', ''))
             newrelic.agent.record_custom_metric('Custom/DynamoDb/get_item_size_exists',
                                                 session_size)
             self.session_bust_warning(session_size)
@@ -214,7 +214,7 @@ class SessionStore(SessionBase):
         update_kwargs['ExpressionAttributeValues'] = attribute_values
         update_kwargs['ExpressionAttributeNames'] = attribute_names
         try:
-            session_size = sys.getsizeof(session_data)
+            session_size = len(session_data)
             start_time = time.time()
             self.table.update_item(**update_kwargs)
             newrelic.agent.record_custom_metric('Custom/DynamoDb/update_item_response',
@@ -261,6 +261,6 @@ class SessionStore(SessionBase):
         :param size:
         :return:
         """
-        if size/100 >= DYNAMO_SESSION_DATA_SIZE_WARNING_LIMIT:
+        if size/1000 >= DYNAMO_SESSION_DATA_SIZE_WARNING_LIMIT:
             logger.debug("session_size_warning",
-                         session_id=self.session_key, size=size)
+                         session_id=self.session_key, size=size/1000.0)
