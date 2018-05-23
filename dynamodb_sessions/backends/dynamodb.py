@@ -12,6 +12,9 @@ from botocore.config import Config
 import os
 from django.utils import timezone
 from datetime import timedelta
+import sys
+import base64
+import zlib
 
 
 TABLE_NAME = getattr(
@@ -96,6 +99,27 @@ class SessionStore(SessionBase):
 
     def __init__(self, session_key=None):
         super(SessionStore, self).__init__(session_key)
+
+    def encode(self, session_dict):
+        """
+        Returns the given session dictionary serialized and encoded as a string.
+        :param session_dict:
+        :return:
+        """
+        return base64.b64encode(
+                zlib.compress(
+                    self.serializer().dumps(session_dict)
+                )
+            )
+
+    def decode(self, session_data):
+        return self.serializer().loads(
+            zlib.decompress(
+                base64.b64decode(
+                    session_data
+                )
+            )
+        )
 
     @property
     def table(self):
